@@ -166,7 +166,7 @@
 <body>
 
 <header>
-  <h1>支払伝票</h1>
+  <h1>支払伝票(未成工事用)</h1>
   <span>入力フォーム</span>
   <div class="acc-badge">
     <span id="acc-status"></span>
@@ -364,6 +364,12 @@ function onOfficeChange() {
   document.getElementById('office_code').value = OFFICE_MAP[name] || '';
 }
 
+function toHalfWidthAlnum(str) {
+  return str
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+    .replace(/\s+/g, '');
+}
+
 function openDatePicker(yId, mId, dId, pickerId) {
   const y = document.getElementById(yId).value || new Date().getFullYear();
   const m = String(document.getElementById(mId).value || (new Date().getMonth() + 1)).padStart(2, '0');
@@ -459,7 +465,7 @@ for (let i = 0; i < NUM_ROWS; i++) {
     </td>
     <td><input type="text" id="summary_${i}" placeholder=""></td>
     <td><input type="text" id="payee_${i}" placeholder=""></td>
-    <td><input type="text" id="category_${i}" placeholder="" style="width:38px;"></td>
+    <td><input type="text" id="category_${i}" placeholder="" style="width:38px;" oninput="this.value = toHalfWidthAlnum(this.value)"></td>
     <td data-acc><input type="text" id="expense_cd_${i}" placeholder=""></td>
     <td data-acc><input type="text" id="memo_cd_${i}" placeholder=""></td>
     <td class="amount-cell"><input type="number" id="amount_${i}" placeholder="0" min="0" step="1" oninput="updateTotal()"></td>
@@ -474,7 +480,7 @@ function updateTotal() {
     const v = parseFloat(document.getElementById(`amount_${i}`).value) || 0;
     sum += v;
   }
-  document.getElementById('total-display').textContent = sum.toLocaleString('ja-JP');
+  document.getElementById('total-display').textContent = '¥' + sum.toLocaleString('ja-JP');
   return sum;
 }
 
@@ -586,9 +592,12 @@ async function generatePDF(withCopy) {
     // 一部PDFビューワーで埋め込みフォントの解析に失敗し代替フォントへの差し替えが発生、
     // 結果として数字等が無関係な文字に化ける問題があった。
     // TrueType(TTF)の単一フォント(日本語+英数字を含む)に切り替えて解消。
+    // さらにNotoSansJPの可変フォント(wght軸)では、特定の文字の並び（例:"O00"）で
+    // glyph欠落により余分な空白が出る問題があったため、可変フォントではない
+    // 静的TTF(M PLUS 1p)に変更して解消。
     let jpFont, asciiFont;
     try {
-      const fontResp = await fetch('https://raw.githubusercontent.com/google/fonts/main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf');
+      const fontResp = await fetch('https://raw.githubusercontent.com/google/fonts/main/ofl/mplus1p/MPLUS1p-Regular.ttf');
       if (!fontResp.ok) throw new Error('font fetch failed');
       const fontData = await fontResp.arrayBuffer();
       jpFont = await a4Doc.embedFont(fontData);
@@ -727,7 +736,7 @@ async function generatePDF(withCopy) {
         drawInCell(gv(`tax_${i}`),        COL_X.tax.x,        yTop, yBottom, COL_X.tax.w);
         drawInCell(gv(`summary_${i}`),    COL_X.summary.x,    yTop, yBottom, COL_X.summary.w);
         drawInCell(gv(`payee_${i}`),      COL_X.payee.x,      yTop, yBottom, COL_X.payee.w);
-        drawInCell(gv(`category_${i}`),   COL_X.category.x,   yTop, yBottom, COL_X.category.w);
+        drawInCell(toHalfWidthAlnum(gv(`category_${i}`)), COL_X.category.x, yTop, yBottom, COL_X.category.w);
         drawInCell(gv(`expense_cd_${i}`), COL_X.expense_cd.x, yTop, yBottom, COL_X.expense_cd.w);
         drawInCell(gv(`memo_cd_${i}`),    COL_X.memo_cd.x,    yTop, yBottom, COL_X.memo_cd.w);
 
@@ -748,6 +757,11 @@ async function generatePDF(withCopy) {
         const [tTop, tBottom] = TOTAL_AMOUNT_BOUNDS;
         for (let d = 0; d < Math.min(totalDigits.length, AMOUNT_CELLS_X.length); d++) {
           drawCenteredChar(totalDigits[d], AMOUNT_CELLS_X[d] - 4, tTop, tBottom);
+        }
+        // 最上位桁の左隣の空きセルに¥を表示
+        const yenIdx = totalDigits.length;
+        if (yenIdx < AMOUNT_CELLS_X.length) {
+          drawCenteredChar('¥', AMOUNT_CELLS_X[yenIdx] - 4, tTop, tBottom);
         }
       }
 
