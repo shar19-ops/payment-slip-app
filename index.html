@@ -315,6 +315,8 @@
   <div id="status"></div>
 
   <div class="btn-bar">
+    <button class="btn-secondary" onclick="loadData()">📂 読み込む</button>
+    <button class="btn-secondary" onclick="saveData()">💾 保存</button>
     <button class="btn-secondary" onclick="clearForm()">クリア</button>
     <button class="btn-primary" onclick="openExportModal()">📄 PDF 出力</button>
   </div>
@@ -396,7 +398,7 @@ const POS = {
   office_code:  { x: 575, y:  86, w:  50 },  // 事業所CD（箱: 560.32-627.84）
   voucher_no:   { x: 645, y:  86, w: 115 },  // 伝票番号（箱: 627.84-762.88）
   job_number:   { x:  88, w:  82, row: 2 },  // 工番（「工番」ラベル右側、借方科目欄内、row2の縦中央）
-  project_name: { x:  88, w:  82, row: 4 },  // 件名（「件名」ラベル右側、借方科目欄内、row4の縦中央）
+  project_name: { x:  70, w: 100, row: 4 },  // 件名（「件名」ラベル右側、借方科目欄内、row4の縦中央）
   issue_year:   { x:  80, y: 362, w:  50 },  // 発行年
   issue_month:  { x: 135, y: 362, w:  38 },  // 発行月
   issue_day:    { x: 183, y: 362, w:  38 },  // 発行日
@@ -481,6 +483,74 @@ function clearForm() {
   if (!confirm('入力内容をすべてクリアしますか？')) return;
   document.querySelectorAll('input, select').forEach(el => { el.value = ''; });
   updateTotal();
+}
+
+// ─── 入力データの保存・読み込み ────────────────────────────
+function collectFormData() {
+  const data = {};
+  document.querySelectorAll('.container input, .container select').forEach(el => {
+    if (!el.id) return;
+    data[el.id] = (el.type === 'radio' || el.type === 'checkbox') ? el.checked : el.value;
+  });
+  return data;
+}
+
+function applyFormData(data) {
+  Object.entries(data).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el.type === 'radio' || el.type === 'checkbox') el.checked = val;
+    else el.value = val;
+  });
+  updateTotal();
+}
+
+async function saveData() {
+  const json = JSON.stringify(collectFormData(), null, 2);
+  const filename = `支払伝票_下書き_${new Date().toISOString().slice(0, 10)}.json`;
+  try {
+    if (window.showSaveFilePicker) {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(json);
+      await writable.close();
+    } else {
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') alert('保存に失敗しました: ' + e.message);
+  }
+}
+
+async function loadData() {
+  try {
+    let file;
+    if (window.showOpenFilePicker) {
+      const [handle] = await window.showOpenFilePicker({
+        types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }]
+      });
+      file = await handle.getFile();
+    } else {
+      file = await new Promise((resolve) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json,application/json';
+        input.onchange = () => resolve(input.files[0]);
+        input.click();
+      });
+    }
+    if (!file) return;
+    applyFormData(JSON.parse(await file.text()));
+  } catch (e) {
+    if (e.name !== 'AbortError') alert('読み込みに失敗しました: ' + e.message);
+  }
 }
 
 // ─── 控え選択モーダル ────────────────────────────────────────
@@ -601,7 +671,7 @@ async function generatePDF(withCopy) {
       const drawPos = (key, val) => draw(val, POS[key].x, POS[key].y, POS[key].w);
 
       // セル（上下境界指定）内に縦中央揃え・必要に応じて改行して描画
-      const drawInCell = (text, xForm, yTop, yBottom, maxWidth, size) => {
+      const drawInCell = (text, xForm, yTop, yBottom, maxWidth, size, vOffset) => {
         if (!text) return;
         const str = String(text);
         const cellHeight = yBottom - yTop;
@@ -612,7 +682,7 @@ async function generatePDF(withCopy) {
           lines = measureForm(str, sz) > maxWidth ? wrapLines(str, sz, maxWidth) : [str];
         }
         const blockHeight = lines.length * sz * LINE_GAP;
-        const yCenter = (yTop + yBottom) / 2;
+        const yCenter = (yTop + yBottom) / 2 + (vOffset || 0);
         let baseline = yCenter - blockHeight / 2 + sz * 0.8;
         for (const line of lines) {
           const x = 0.75 * xForm;
@@ -644,9 +714,10 @@ async function generatePDF(withCopy) {
 
       // ─ 工番・件名（借方科目欄、各ラベル行の縦中央） ─
       {
-        const [t2, b2] = ROW_BOUNDS[POS.job_number.row];
+        // 工番欄はrow2+3の結合セル、件名欄はrow4+5+6の結合セル全体を使って縦中央配置
+        const t2 = ROW_BOUNDS[2][0], b2 = ROW_BOUNDS[3][1];
         drawInCell(v('job_number'), POS.job_number.x, t2, b2, POS.job_number.w);
-        const [t4, b4] = ROW_BOUNDS[POS.project_name.row];
+        const t4 = ROW_BOUNDS[4][0], b4 = ROW_BOUNDS[6][1];
         drawInCell(v('project_name'), POS.project_name.x, t4, b4, POS.project_name.w);
       }
 
