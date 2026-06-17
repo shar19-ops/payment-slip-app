@@ -40,6 +40,18 @@
   .date-row { display: flex; align-items: center; gap: 6px; padding: 16px; }
   .date-row .field { flex: 0 0 80px; }
   .date-row .sep { margin-top: 18px; color: #556; }
+  .btn-calendar {
+    margin-top: 18px;
+    width: 34px; height: 34px;
+    border: 1px solid #c7d2e0;
+    border-radius: 8px;
+    background: #fff;
+    font-size: 16px;
+    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .btn-calendar:hover { background: #eef3fb; }
+  .date-picker-hidden { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; border: none; }
 
   /* 明細テーブル */
   .detail-table-wrap { overflow-x: auto; }
@@ -118,6 +130,9 @@
   body:not(.acc-mode) table.detail td[data-acc] input,
   body:not(.acc-mode) table.detail td[data-acc] select {
     pointer-events: none; color: #99a !important; background: #edf0f5 !important;
+  }
+  body:not(.acc-mode) [data-acc].btn-calendar {
+    pointer-events: none; opacity: 0.5;
   }
 
   /* パスワードモーダル */
@@ -212,6 +227,8 @@
       <span class="sep">月</span>
       <div class="field" data-acc><label>日</label><input type="number" id="date_day" style="width:60px;" min="1" max="31" placeholder="1"></div>
       <span class="sep">日</span>
+      <button type="button" class="btn-calendar" data-acc title="カレンダーから選択" onclick="openDatePicker('date_year','date_month','date_day','date_picker_main')">📅</button>
+      <input type="date" id="date_picker_main" class="date-picker-hidden" onchange="applyDatePicker(this,'date_year','date_month','date_day')">
     </div>
   </div>
 
@@ -270,6 +287,8 @@
       <span class="sep">月</span>
       <div class="field"><label>日</label><input type="number" id="issue_day" style="width:60px;" min="1" max="31" placeholder="1"></div>
       <span class="sep">日</span>
+      <button type="button" class="btn-calendar" title="カレンダーから選択" onclick="openDatePicker('issue_year','issue_month','issue_day','date_picker_issue')">📅</button>
+      <input type="date" id="date_picker_issue" class="date-picker-hidden" onchange="applyDatePicker(this,'issue_year','issue_month','issue_day')">
     </div>
     <div class="field-grid field-grid-3" style="padding: 0 16px 16px;">
       <div class="field">
@@ -341,6 +360,24 @@ const OFFICE_MAP = {
 function onOfficeChange() {
   const name = document.getElementById('office_name').value;
   document.getElementById('office_code').value = OFFICE_MAP[name] || '';
+}
+
+function openDatePicker(yId, mId, dId, pickerId) {
+  const y = document.getElementById(yId).value || new Date().getFullYear();
+  const m = String(document.getElementById(mId).value || (new Date().getMonth() + 1)).padStart(2, '0');
+  const d = String(document.getElementById(dId).value || new Date().getDate()).padStart(2, '0');
+  const picker = document.getElementById(pickerId);
+  picker.value = `${y}-${m}-${d}`;
+  if (picker.showPicker) picker.showPicker();
+  else picker.click();
+}
+
+function applyDatePicker(picker, yId, mId, dId) {
+  const parts = picker.value.split('-');
+  if (parts.length !== 3) return;
+  document.getElementById(yId).value = parseInt(parts[0], 10);
+  document.getElementById(mId).value = parseInt(parts[1], 10);
+  document.getElementById(dId).value = parseInt(parts[2], 10);
 }
 
 // ─── 座標マップ ────────────────────────────────────────────────
