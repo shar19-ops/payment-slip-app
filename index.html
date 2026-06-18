@@ -131,7 +131,8 @@
   body:not(.acc-mode) table.detail td[data-acc] select {
     pointer-events: none; color: #99a !important; background: #edf0f5 !important;
   }
-  body:not(.acc-mode) [data-acc].btn-calendar {
+  body:not(.acc-mode) [data-acc].btn-calendar,
+  body:not(.acc-mode) [data-acc].btn-secondary {
     pointer-events: none; opacity: 0.5;
   }
 
@@ -189,6 +190,10 @@
 </div>
 
 <div class="container">
+
+  <p style="margin:0 0 12px; padding:8px 12px; background:#fff6e0; border:1px solid #e8d49a; border-radius:6px; font-size:12px; color:#7a5d10;">
+    ※ 丸数字・ローマ数字・絵文字などの環境依存文字は文字化け・表示崩れの原因となるため入力しないでください。
+  </p>
 
   <!-- ヘッダー情報 -->
   <div class="card">
@@ -249,7 +254,10 @@
 
   <!-- 明細行 -->
   <div class="card">
-    <div class="card-header">▌ 明細（最大9行）</div>
+    <div class="card-header" style="display:flex; align-items:center; justify-content:space-between;">
+      <span>▌ 明細（最大9行）</span>
+      <button type="button" class="btn-secondary" data-acc style="font-size:12px; padding:4px 10px;" onclick="openExpenseCdModal()">📋 経費CD管理</button>
+    </div>
     <div class="detail-table-wrap">
       <table class="detail">
         <thead>
@@ -259,7 +267,7 @@
             <th style="min-width:180px;">摘要</th>
             <th style="min-width:140px;">支払先</th>
             <th style="width:44px;">区分</th>
-            <th style="width:56px;">経費CD</th>
+            <th style="width:80px;">経費CD</th>
             <th style="width:56px;">摘要CD</th>
             <th style="width:110px;">金額（円）</th>
           </tr>
@@ -322,6 +330,22 @@
   </div>
 
 </div><!-- /container -->
+
+<!-- 経費CD管理モーダル -->
+<div id="expense-cd-modal" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <h2>📋 経費CD管理</h2>
+    <div id="expense-cd-list" style="max-height:300px; overflow-y:auto; margin-bottom:14px;"></div>
+    <div style="display:flex; gap:8px; margin-bottom:14px;">
+      <input type="text" id="new-expense-cd-label" placeholder="名称（例：旅）" style="flex:1;">
+      <input type="text" id="new-expense-cd-code" placeholder="コード（例：1）" style="width:90px;">
+      <button class="btn-login" onclick="addExpenseCd()">追加</button>
+    </div>
+    <div class="modal-btn-row">
+      <button class="btn-cancel" onclick="closeExpenseCdModal()">閉じる</button>
+    </div>
+  </div>
+</div>
 
 <!-- 控え選択モーダル -->
 <div id="export-modal" class="modal-overlay" style="display:none">
@@ -443,6 +467,102 @@ const TOTAL_AMOUNT_BOUNDS = [333.76, 369.28]; // 合計行
 const EMPLOYEE_CD_CELLS_X = [298, 317, 337, 356, 375, 394, 413];
 const EMPLOYEE_CD_BOUNDS = [399.52, 430.08];
 
+// ─── 経費CDリスト（ローカル保存・追加/削除可能） ──────────────────
+const DEFAULT_EXPENSE_CD_LIST = [
+  { label: '旅',   code: '1'  },
+  { label: '事',   code: '2'  },
+  { label: '交',   code: '3'  },
+  { label: '仮',   code: '4'  },
+  { label: '地',   code: '7'  },
+  { label: '厚',   code: '9'  },
+  { label: '光',   code: '12' },
+  { label: '租',   code: '13' },
+  { label: '雑',   code: '18' },
+  { label: '材',   code: '00' },
+  { label: '法',   code: '8'  },
+  { label: '保守', code: '21' },
+  { label: '飲交', code: '27' },
+];
+
+function loadExpenseCdList() {
+  try {
+    const raw = localStorage.getItem('expenseCdList');
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return DEFAULT_EXPENSE_CD_LIST.slice();
+}
+
+function saveExpenseCdList(list) {
+  localStorage.setItem('expenseCdList', JSON.stringify(list));
+}
+
+let expenseCdList = loadExpenseCdList();
+
+function expenseCdOptionsHtml(selectedValue) {
+  let html = '<option value=""></option>';
+  for (const item of expenseCdList) {
+    const sel = item.code === selectedValue ? ' selected' : '';
+    html += `<option value="${item.code}"${sel}>${item.label}（${item.code}）</option>`;
+  }
+  if (selectedValue && !expenseCdList.some(it => it.code === selectedValue)) {
+    html += `<option value="${selectedValue}" selected>${selectedValue}（削除済み）</option>`;
+  }
+  return html;
+}
+
+function refreshAllExpenseCdSelects() {
+  document.querySelectorAll('select[id^="expense_cd_"]').forEach(sel => {
+    const cur = sel.value;
+    sel.innerHTML = expenseCdOptionsHtml(cur);
+  });
+}
+
+function openExpenseCdModal() {
+  if (!accMode) { alert('経費CD管理は経理担当者のみ操作できます。\n右上の「経理担当者」からログインしてください。'); return; }
+  renderExpenseCdModalList();
+  document.getElementById('expense-cd-modal').style.display = 'flex';
+}
+
+function closeExpenseCdModal() {
+  document.getElementById('expense-cd-modal').style.display = 'none';
+}
+
+function renderExpenseCdModalList() {
+  const container = document.getElementById('expense-cd-list');
+  if (expenseCdList.length === 0) {
+    container.innerHTML = '<p style="color:#889; font-size:13px;">登録された経費CDはありません</p>';
+    return;
+  }
+  container.innerHTML = expenseCdList.map((item, idx) => `
+    <div style="display:flex; align-items:center; gap:8px; padding:6px 2px; border-bottom:1px solid #eee;">
+      <span style="flex:1; font-size:14px;">${item.label}（${item.code}）</span>
+      <button class="btn-cancel" style="padding:4px 12px;" onclick="deleteExpenseCd(${idx})">削除</button>
+    </div>
+  `).join('');
+}
+
+function addExpenseCd() {
+  const labelEl = document.getElementById('new-expense-cd-label');
+  const codeEl = document.getElementById('new-expense-cd-code');
+  const label = labelEl.value.trim();
+  const code = codeEl.value.trim();
+  if (!label || !code) { alert('名称とコードの両方を入力してください'); return; }
+  expenseCdList.push({ label, code });
+  saveExpenseCdList(expenseCdList);
+  labelEl.value = '';
+  codeEl.value = '';
+  renderExpenseCdModalList();
+  refreshAllExpenseCdSelects();
+}
+
+function deleteExpenseCd(idx) {
+  if (!confirm(`「${expenseCdList[idx].label}（${expenseCdList[idx].code}）」を削除しますか？`)) return;
+  expenseCdList.splice(idx, 1);
+  saveExpenseCdList(expenseCdList);
+  renderExpenseCdModalList();
+  refreshAllExpenseCdSelects();
+}
+
 // ─── 行生成 ──────────────────────────────────────────────────
 const NUM_ROWS = 7;
 const tbody = document.getElementById('detail-tbody');
@@ -466,7 +586,7 @@ for (let i = 0; i < NUM_ROWS; i++) {
     <td><input type="text" id="summary_${i}" placeholder=""></td>
     <td><input type="text" id="payee_${i}" placeholder=""></td>
     <td><input type="text" id="category_${i}" placeholder="" style="width:38px;" oninput="this.value = toHalfWidthAlnum(this.value)"></td>
-    <td data-acc><input type="text" id="expense_cd_${i}" placeholder=""></td>
+    <td data-acc><select class="tax-select" id="expense_cd_${i}">${expenseCdOptionsHtml('')}</select></td>
     <td data-acc><input type="text" id="memo_cd_${i}" placeholder=""></td>
     <td class="amount-cell"><input type="number" id="amount_${i}" placeholder="0" min="0" step="1" oninput="updateTotal()"></td>
   `;
