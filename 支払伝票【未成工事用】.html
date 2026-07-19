@@ -358,6 +358,48 @@
   .btn-cancel { background: #e8ecf0; color: #445; }
   .btn-cancel:hover { background: #d0d8e0; }
   #acc-pw-error { color: #c0392b; font-size: 12px; display: none; }
+
+  /* ─── 領収書スキャン（β版） ─────────────────────── */
+  .btn-scan {
+    background: #eef3fb; color: #1a4a7a; border: 1px solid #c5d8f0;
+    border-radius: 6px; padding: 9px 16px; font-size: 14px; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: background 0.12s;
+  }
+  .btn-scan:hover { background: #d6e6f8; }
+  .btn-scan-clear { background: #fff2f2; color: #c0392b; border-color: #f0c0c0; }
+  .btn-scan-clear:hover { background: #ffe0e0; }
+  .receipt-btns { display: flex; gap: 10px; flex-wrap: wrap; padding: 16px 16px 0; }
+  #receipt-status { font-size: 12px; color: #667; padding: 5px 16px; min-height: 20px; }
+  .receipt-preview-wrap { padding: 0 16px 16px; }
+  #receipt-thumbs { display: flex; flex-wrap: wrap; gap: 8px; }
+  .rcpt-thumb { position: relative; display: inline-flex; }
+  .rcpt-thumb canvas { max-height: 130px; max-width: 180px; border: 1px solid #c5d8f0; border-radius: 5px; display: block; }
+  .rcpt-thumb-del { position: absolute; top: 3px; right: 3px; background: rgba(0,0,0,0.55); color:#fff; border:none; border-radius:50%; width:20px; height:20px; cursor:pointer; font-size:12px; line-height:20px; padding:0; text-align:center; }
+  .rcpt-thumb-del:hover { background: rgba(200,0,0,0.85); }
+  @keyframes rcv-spin { to { transform: rotate(360deg); } }
+  .receipt-loading::before {
+    content: ''; width: 12px; height: 12px;
+    border: 2px solid #3a7bd5; border-top-color: transparent;
+    border-radius: 50%; animation: rcv-spin 0.7s linear infinite;
+    display: inline-block; vertical-align: middle; margin-right: 5px;
+  }
+
+  /* ─── 手動トリミングモーダル ────────────────────── */
+  .manual-crop-box {
+    background: white; border-radius: 12px; padding: 20px 22px;
+    width: min(96vw, 820px); display: flex; flex-direction: column;
+    gap: 10px; box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+    max-height: 97vh; overflow: hidden;
+  }
+  .manual-crop-box h2 { font-size: 16px; color: #1a4a7a; }
+  .manual-crop-box p  { font-size: 12px; color: #667; margin: 0; }
+  .crop-canvas-wrap {
+    display: flex; justify-content: center; align-items: center;
+    background: #1a1a2e; border-radius: 6px; overflow: hidden; flex: 1; min-height: 180px;
+  }
+  #crop-canvas { touch-action: none; max-width: 100%; display: block; cursor: crosshair; }
 </style>
 </head>
 <body>
@@ -483,6 +525,34 @@
     </div>
   </div>
 
+  <!-- 領収書スキャン -->
+  <div class="card">
+    <div class="card-header" style="display:flex; align-items:center; justify-content:space-between;">
+      <span>▌ 領収書（任意） <span style="color:#c0392b; font-weight:700; font-size:11px;">β版</span></span>
+      <span style="font-size:11px; color:#778; font-weight:400;">撮影またはファイルを自動トリミングして添付</span>
+    </div>
+    <p style="margin:0 16px 8px; padding:8px 12px; background:#fff8e1; border-left:3px solid #f5a623; border-radius:4px; font-size:12px; color:#7a5a00;">
+      ⚠ 領収書の原本は後日、経理担当へ提出してください。
+    </p>
+    <p style="margin:0 16px 10px; padding:8px 12px; background:#f0f4f8; border-left:3px solid #90a8c8; border-radius:4px; font-size:11px; color:#445; line-height:1.7;">
+      📷 <b>自動トリミングのヒント</b>：暗い色の下敷き（黒いクリアファイルなど）の上に領収書を置いて撮影すると検出精度が上がります。白いテーブルの上など背景と色が近い場合はうまく検出できないことがあります。<br>
+      自動トリミングがうまくいかなかった場合は <b>✂ 手動トリミング</b> で四隅を指定してください。
+    </p>
+    <div class="receipt-btns">
+      <button class="btn-scan" onclick="receiptScanCamera()">📷 カメラで撮影</button>
+      <button class="btn-scan" onclick="receiptScanFile()">🖼 ファイルを選択</button>
+      <button class="btn-scan" id="receipt-manual-btn" style="display:none;" onclick="openManualCrop()">✂ 手動トリミング</button>
+      <button class="btn-scan btn-scan-clear" id="receipt-clear-btn" style="display:none;" onclick="clearReceipt()">✕ クリア</button>
+    </div>
+    <p id="receipt-status"></p>
+    <div class="receipt-preview-wrap" id="receipt-preview-wrap" style="display:none;">
+      <div id="receipt-thumbs"></div>
+      <p style="font-size:12px; color:#778; margin-top:6px;">※ PDF出力時に添付されます（複数枚可）</p>
+    </div>
+    <input type="file" id="receipt-file-input" accept="image/*" style="display:none;" onchange="handleReceiptInput(this)">
+    <input type="file" id="receipt-camera-input" accept="image/*" capture="environment" style="display:none;" onchange="handleReceiptInput(this)">
+  </div>
+
   <!-- 発行情報 -->
   <div class="card">
     <div class="card-header">▌ 発行情報</div>
@@ -497,7 +567,15 @@
       <button type="button" class="btn-calendar" title="カレンダーから選択" onclick="openDatePicker('issue_year','issue_month','issue_day','date_picker_issue')">📅</button>
       <input type="date" id="date_picker_issue" class="date-picker-hidden" onchange="applyDatePicker(this,'issue_year','issue_month','issue_day')">
     </div>
-    <div class="field-grid field-grid-3" style="padding: 0 16px 16px;">
+    <div class="field-grid field-grid-4" style="padding: 0 16px 16px;">
+      <div class="field">
+        <label>部</label>
+        <input type="text" id="dept" placeholder="">
+      </div>
+      <div class="field">
+        <label>課</label>
+        <input type="text" id="section" placeholder="">
+      </div>
       <div class="field">
         <label>社員CD</label>
         <input type="text" id="employee_cd" placeholder="例：1234567" maxlength="7">
@@ -506,16 +584,6 @@
         <label>発行者（苗字 名前の間にスペース）</label>
         <input type="text" id="issuer" placeholder="例：佐藤 太郎">
         <span id="issuer-name-error" style="display:none; font-size:11px; color:#c0392b;">苗字と名前の間にスペースを入力してください</span>
-      </div>
-      <div style="display:flex; gap:8px;">
-        <div class="field" style="flex:1;">
-          <label>部</label>
-          <input type="text" id="dept" placeholder="">
-        </div>
-        <div class="field" style="flex:1;">
-          <label>課</label>
-          <input type="text" id="section" placeholder="">
-        </div>
       </div>
     </div>
     <div style="padding:0 16px 16px; display:flex; align-items:center; gap:12px; border-top:1px solid #e0e8f0; margin:4px 16px 0; padding-top:14px;">
@@ -553,8 +621,7 @@
     <button class="btn-secondary" onclick="loadData()">📂 読み込む</button>
     <button class="btn-secondary" onclick="saveData()">💾 保存</button>
     <button class="btn-secondary" onclick="clearForm()">クリア</button>
-    <button class="btn-secondary" onclick="printPDF()">🖨 印刷</button>
-    <button class="btn-primary" onclick="openExportModal()">📄 PDF 出力</button>
+    <button class="btn-primary" onclick="printPDF()">🖨 印刷 / PDF出力</button>
   </div>
 
 </div><!-- /container -->
@@ -1205,6 +1272,36 @@ async function generatePDF(withCopy, mode = 'download') {
       drawAt(yOffset);
     }
 
+    // ─ 領収書: A5ページに2×2グリッドでまとめて出力 ─
+    if (receiptImages.length > 0) {
+      const A5W = 420, A5H = 595;
+      const marg = 15, gap = 8, cols = 2, rows = 2;
+      const cellW = (A5W - 2*marg - (cols-1)*gap) / cols;
+      const cellH = (A5H - 2*marg - (rows-1)*gap) / rows;
+      const rcptImgs = [];
+      for (const rcpt of receiptImages) {
+        const rUrl = rcpt.dataUrl;
+        const isJp = rUrl.startsWith('data:image/jpeg');
+        const bytes = Uint8Array.from(atob(rUrl.split(',')[1]), c => c.charCodeAt(0));
+        rcptImgs.push(isJp ? await a4Doc.embedJpg(bytes) : await a4Doc.embedPng(bytes));
+      }
+      let rcptPage = null;
+      for (let i = 0; i < rcptImgs.length; i++) {
+        const slot = i % (cols * rows);
+        if (slot === 0) rcptPage = a4Doc.addPage([A5W, A5H]);
+        const col = slot % cols, row = Math.floor(slot / cols);
+        const cx = marg + col * (cellW + gap);
+        const cy = A5H - marg - (row + 1) * cellH - row * gap;
+        const emb = rcptImgs[i];
+        const sc = Math.min(cellW / emb.width, cellH / emb.height);
+        rcptPage.drawImage(emb, {
+          x: cx + (cellW - emb.width*sc) / 2,
+          y: cy + (cellH - emb.height*sc) / 2,
+          width: emb.width*sc, height: emb.height*sc
+        });
+      }
+    }
+
     // ─ 保存 ─
     const outBytes = await a4Doc.save();
     if (mode === 'print') {
@@ -1227,6 +1324,457 @@ async function generatePDF(withCopy, mode = 'download') {
     console.error(err);
     statusEl.textContent = 'エラー: ' + err.message;
     statusEl.className = 'status-err';
+  }
+}
+
+// ─── 領収書スキャン（β版） ────────────────────────────────
+let receiptImages = []; // [{dataUrl, originalImg}]
+let receiptOriginalImg = null;
+let openCVPromise = null;
+
+function ensureOpenCV() {
+  if (openCVPromise) return openCVPromise;
+  openCVPromise = new Promise((resolve, reject) => {
+    if (typeof cv !== 'undefined' && cv && typeof cv.Mat === 'function') {
+      resolve(cv); return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://docs.opencv.org/4.8.0/opencv.js';
+    script.onload = () => {
+      const check = setInterval(() => {
+        if (typeof cv !== 'undefined' && cv && typeof cv.Mat === 'function') {
+          clearInterval(check);
+          resolve(cv);
+        }
+      }, 100);
+      setTimeout(() => { clearInterval(check); reject(new Error('OpenCV初期化タイムアウト')); }, 30000);
+    };
+    script.onerror = () => reject(new Error('OpenCV.jsの読み込みに失敗しました'));
+    document.head.appendChild(script);
+  });
+  return openCVPromise;
+}
+
+function setRcptStatus(msg, loading) {
+  const el = document.getElementById('receipt-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = loading ? 'receipt-loading' : '';
+}
+
+function receiptScanCamera() {
+  document.getElementById('receipt-camera-input').click();
+}
+function receiptScanFile() {
+  document.getElementById('receipt-file-input').click();
+}
+function clearReceipt() {
+  receiptImages = [];
+  receiptOriginalImg = null;
+  document.getElementById('receipt-thumbs').innerHTML = '';
+  document.getElementById('receipt-preview-wrap').style.display = 'none';
+  document.getElementById('receipt-clear-btn').style.display = 'none';
+  document.getElementById('receipt-manual-btn').style.display = 'none';
+  setRcptStatus('');
+}
+
+function renderReceiptThumbs() {
+  const container = document.getElementById('receipt-thumbs');
+  container.innerHTML = '';
+  receiptImages.forEach((rcpt, idx) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'rcpt-thumb';
+    const cvs = document.createElement('canvas');
+    const pi = new Image();
+    pi.onload = () => {
+      const sc = Math.min(180 / pi.width, 130 / pi.height, 1);
+      cvs.width = Math.round(pi.width * sc);
+      cvs.height = Math.round(pi.height * sc);
+      cvs.getContext('2d').drawImage(pi, 0, 0, cvs.width, cvs.height);
+    };
+    pi.src = rcpt.dataUrl;
+    const del = document.createElement('button');
+    del.className = 'rcpt-thumb-del';
+    del.textContent = '✕';
+    del.title = (idx + 1) + '枚目を削除';
+    del.onclick = () => removeReceiptAt(idx);
+    wrap.appendChild(cvs);
+    wrap.appendChild(del);
+    container.appendChild(wrap);
+  });
+  document.getElementById('receipt-preview-wrap').style.display =
+    receiptImages.length ? 'block' : 'none';
+}
+
+function removeReceiptAt(idx) {
+  receiptImages.splice(idx, 1);
+  if (receiptImages.length === 0) {
+    clearReceipt();
+  } else {
+    receiptOriginalImg = receiptImages[receiptImages.length - 1].originalImg;
+    renderReceiptThumbs();
+  }
+}
+
+async function handleReceiptInput(input) {
+  const file = input.files[0];
+  input.value = '';
+  if (!file) return;
+  setRcptStatus('画像を読み込み中...', true);
+  try {
+    const imgUrl = URL.createObjectURL(file);
+    const img = await new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = rej;
+      i.src = imgUrl;
+    });
+    URL.revokeObjectURL(imgUrl);
+    receiptOriginalImg = img;
+
+    let resultUrl = null;
+    try {
+      setRcptStatus('OpenCVを読み込み中...', true);
+      const openCV = await ensureOpenCV();
+      setRcptStatus('自動トリミング中...', true);
+      resultUrl = await detectAndCropWithCV(openCV, img);
+    } catch (e) {
+      console.warn('OpenCV失敗:', e);
+    }
+
+    if (resultUrl) {
+      setRcptStatus('自動トリミング完了');
+    } else {
+      resultUrl = imgToDataUrl(img, 1200);
+      setRcptStatus('自動トリミング不可 — ✂ 手動トリミングで範囲を指定できます');
+    }
+
+    receiptImages.push({ dataUrl: resultUrl, originalImg: img });
+    renderReceiptThumbs();
+    document.getElementById('receipt-manual-btn').style.display = 'inline-flex';
+    document.getElementById('receipt-clear-btn').style.display = 'inline-flex';
+  } catch (e) {
+    setRcptStatus('エラー: ' + e.message);
+  }
+}
+function imgToDataUrl(img, maxSide) {
+  const s = maxSide ? Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight)) : 1;
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.naturalWidth * s);
+  c.height = Math.round(img.naturalHeight * s);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.92);
+}
+
+// ─── 手動トリミング ──────────────────────────────────────────
+let cropState = null;
+
+let _cropEvtReady = false;
+function openManualCrop() {
+  if (!receiptOriginalImg) return;
+  if (!_cropEvtReady) {
+    _cropEvtReady = true;
+    document.getElementById('manual-crop-modal').addEventListener('click', function(e) {
+      if (e.target === this) cancelManualCrop();
+    });
+    const c = document.getElementById('crop-canvas');
+    c.addEventListener('pointerdown', function(e) {
+      if (!cropState) return;
+      const canvas = document.getElementById('crop-canvas');
+      const pos = getCropPosFromEvent(e, canvas);
+      const R = Math.max(32, canvas.width * 0.06);
+      const idx = cropState.corners.findIndex(p => Math.hypot(p.x - pos.x, p.y - pos.y) < R);
+      if (idx >= 0) {
+        cropState.dragIdx = idx;
+        canvas.setPointerCapture(e.pointerId);
+        e.preventDefault();
+      }
+    });
+    c.addEventListener('pointermove', function(e) {
+      if (!cropState || cropState.dragIdx < 0) return;
+      const canvas = document.getElementById('crop-canvas');
+      const pos = getCropPosFromEvent(e, canvas);
+      cropState.corners[cropState.dragIdx] = {
+        x: Math.max(0, Math.min(canvas.width, pos.x)),
+        y: Math.max(0, Math.min(canvas.height, pos.y)),
+      };
+      drawCropCanvas();
+      e.preventDefault();
+    }, { passive: false });
+    c.addEventListener('pointerup', function() { if (cropState) cropState.dragIdx = -1; });
+    c.addEventListener('pointercancel', function() { if (cropState) cropState.dragIdx = -1; });
+  }
+  cropState = { img: receiptOriginalImg, rotation: 0, scale: 1, corners: [], dragIdx: -1 };
+  rebuildCropCanvas();
+  document.getElementById('manual-crop-modal').style.display = 'flex';
+}
+
+function rebuildCropCanvas() {
+  const { img, rotation } = cropState;
+  const tmp = document.createElement('canvas');
+  const ctx2 = tmp.getContext('2d');
+  if (rotation === 0) {
+    tmp.width = img.naturalWidth; tmp.height = img.naturalHeight;
+    ctx2.drawImage(img, 0, 0);
+  } else if (rotation === 90) {
+    tmp.width = img.naturalHeight; tmp.height = img.naturalWidth;
+    ctx2.translate(tmp.width, 0); ctx2.rotate(Math.PI / 2); ctx2.drawImage(img, 0, 0);
+  } else if (rotation === 180) {
+    tmp.width = img.naturalWidth; tmp.height = img.naturalHeight;
+    ctx2.translate(tmp.width, tmp.height); ctx2.rotate(Math.PI); ctx2.drawImage(img, 0, 0);
+  } else {
+    tmp.width = img.naturalHeight; tmp.height = img.naturalWidth;
+    ctx2.translate(0, tmp.height); ctx2.rotate(-Math.PI / 2); ctx2.drawImage(img, 0, 0);
+  }
+  cropState.rotatedCanvas = tmp;
+  const maxW = Math.min(window.innerWidth * 0.88, 760);
+  const maxH = Math.max(window.innerHeight * 0.58, 240);
+  const scale = Math.min(maxW / tmp.width, maxH / tmp.height, 1);
+  const cw = Math.round(tmp.width * scale), ch = Math.round(tmp.height * scale);
+  const canvas = document.getElementById('crop-canvas');
+  canvas.width = cw; canvas.height = ch;
+  cropState.scale = scale;
+  const mx = cw * 0.08, my = ch * 0.08;
+  cropState.corners = [
+    { x: mx,      y: my },
+    { x: cw - mx, y: my },
+    { x: cw - mx, y: ch - my },
+    { x: mx,      y: ch - my },
+  ];
+  drawCropCanvas();
+}
+
+function rotateCrop(deg) {
+  if (!cropState) return;
+  cropState.rotation = ((cropState.rotation + deg) + 360) % 360;
+  rebuildCropCanvas();
+}
+
+function drawCropCanvas() {
+  if (!cropState) return;
+  const { rotatedCanvas, corners } = cropState;
+  const canvas = document.getElementById('crop-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(rotatedCanvas, 0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, canvas.width, canvas.height);
+  ctx.moveTo(corners[0].x, corners[0].y);
+  for (let i = 1; i < 4; i++) ctx.lineTo(corners[i].x, corners[i].y);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(0,0,0,0.52)';
+  ctx.fill('evenodd');
+  ctx.restore();
+  ctx.beginPath();
+  ctx.moveTo(corners[0].x, corners[0].y);
+  for (let i = 1; i < 4; i++) ctx.lineTo(corners[i].x, corners[i].y);
+  ctx.closePath();
+  ctx.strokeStyle = '#3a9bd5';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 3]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  const R = Math.max(12, Math.min(20, canvas.width * 0.028));
+  corners.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, R, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(58,123,213,0.9)';
+    ctx.fill();
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+  });
+}
+
+function getCropPosFromEvent(e, canvas) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = canvas.width / rect.width, sy = canvas.height / rect.height;
+  return { x: (e.clientX - rect.left) * sx, y: (e.clientY - rect.top) * sy };
+}
+
+function cancelManualCrop() {
+  document.getElementById('manual-crop-modal').style.display = 'none';
+  cropState = null;
+}
+
+async function confirmManualCrop() {
+  if (!cropState) return;
+  const { rotatedCanvas, corners, scale } = cropState;
+  document.getElementById('manual-crop-modal').style.display = 'none';
+  setRcptStatus('手動トリミングを適用中...', true);
+  const origCorners = corners.map(p => ({ x: p.x / scale, y: p.y / scale }));
+  let resultUrl;
+  try {
+    const openCV = await ensureOpenCV();
+    resultUrl = await perspectiveWarpFromCorners(openCV, rotatedCanvas, origCorners);
+  } catch(e) {
+    resultUrl = simpleCropFromCorners(rotatedCanvas, origCorners);
+  }
+  cropState = null;
+  if (receiptImages.length > 0) {
+    receiptImages[receiptImages.length - 1].dataUrl = resultUrl;
+  } else {
+    receiptImages.push({ dataUrl: resultUrl, originalImg: receiptOriginalImg });
+    document.getElementById('receipt-manual-btn').style.display = 'inline-flex';
+    document.getElementById('receipt-clear-btn').style.display = 'inline-flex';
+  }
+  renderReceiptThumbs();
+  setRcptStatus('手動トリミング完了');
+}
+
+async function perspectiveWarpFromCorners(cv, src, corners) {
+  const [tl, tr, br, bl] = sortCorners(corners);
+  const outW = Math.round(Math.max(Math.hypot(tr.x-tl.x,tr.y-tl.y), Math.hypot(br.x-bl.x,br.y-bl.y)));
+  const outH = Math.round(Math.max(Math.hypot(bl.x-tl.x,bl.y-tl.y), Math.hypot(br.x-tr.x,br.y-tr.y)));
+  const srcW = src.naturalWidth || src.width, srcH = src.naturalHeight || src.height;
+  const ws = Math.min(1, 1200 / Math.max(srcW, srcH));
+  const sw = Math.round(srcW * ws), sh = Math.round(srcH * ws);
+  const wCanvas = document.createElement('canvas');
+  wCanvas.width = sw; wCanvas.height = sh;
+  wCanvas.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;top:-9999px;left:-9999px';
+  wCanvas.getContext('2d').drawImage(src, 0, 0, sw, sh);
+  document.body.appendChild(wCanvas);
+  let wSrc, wDst, M, sp, dp;
+  try {
+    wSrc = cv.imread(wCanvas);
+    sp = cv.matFromArray(4, 1, cv.CV_32FC2, [tl.x*ws,tl.y*ws, tr.x*ws,tr.y*ws, br.x*ws,br.y*ws, bl.x*ws,bl.y*ws]); // corners already in src-pixel coords
+    dp = cv.matFromArray(4, 1, cv.CV_32FC2, [0,0, outW*ws,0, outW*ws,outH*ws, 0,outH*ws]);
+    M = cv.getPerspectiveTransform(sp, dp);
+    wDst = new cv.Mat();
+    cv.warpPerspective(wSrc, wDst, M, new cv.Size(Math.round(outW*ws), Math.round(outH*ws)), cv.INTER_LINEAR, cv.BORDER_CONSTANT);
+    const rc = document.createElement('canvas');
+    rc.width = wDst.cols; rc.height = wDst.rows;
+    cv.imshow(rc, wDst);
+    return rc.toDataURL('image/jpeg', 0.92);
+  } finally {
+    [wSrc, wDst, M, sp, dp].forEach(m => { try { m && m.delete(); } catch(ex){} });
+    document.body.removeChild(wCanvas);
+  }
+}
+
+function simpleCropFromCorners(src, corners) {
+  const srcW = src.naturalWidth || src.width, srcH = src.naturalHeight || src.height;
+  const xs = corners.map(p => p.x), ys = corners.map(p => p.y);
+  const x = Math.max(0, Math.min(...xs)), y = Math.max(0, Math.min(...ys));
+  const w = Math.min(srcW - x, Math.max(...xs) - x);
+  const h = Math.min(srcH - y, Math.max(...ys) - y);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(w); canvas.height = Math.round(h);
+  canvas.getContext('2d').drawImage(src, x, y, w, h, 0, 0, w, h);
+  return canvas.toDataURL('image/jpeg', 0.92);
+}
+
+function sortCorners(pts) {
+  const s = pts.slice().sort((a, b) => a.y - b.y);
+  const top = s.slice(0, 2).sort((a, b) => a.x - b.x);
+  const bot = s.slice(2).sort((a, b) => a.x - b.x);
+  return [top[0], top[1], bot[1], bot[0]]; // TL, TR, BR, BL
+}
+
+async function detectAndCropWithCV(cv, img) {
+  const PROC = 900;
+  const scale = Math.min(1, PROC / Math.max(img.naturalWidth, img.naturalHeight));
+  const pw = Math.round(img.naturalWidth * scale);
+  const ph = Math.round(img.naturalHeight * scale);
+
+  const pCanvas = document.createElement('canvas');
+  pCanvas.width = pw; pCanvas.height = ph;
+  pCanvas.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;top:-9999px;left:-9999px';
+  pCanvas.getContext('2d').drawImage(img, 0, 0, pw, ph);
+  document.body.appendChild(pCanvas);
+
+  let src, gray, blurred, edges, dilated, kernel, contours, hier;
+  let bestPts = null;
+
+  try {
+    src = cv.imread(pCanvas);
+    gray = new cv.Mat(); blurred = new cv.Mat();
+    edges = new cv.Mat(); dilated = new cv.Mat();
+    kernel = cv.Mat.ones(3, 3, cv.CV_8U);
+    contours = new cv.MatVector(); hier = new cv.Mat();
+
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
+    cv.Canny(blurred, edges, 50, 150);
+    cv.dilate(edges, dilated, kernel);
+    cv.findContours(dilated, contours, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+    let maxArea = pw * ph * 0.04;
+
+    for (let i = 0; i < contours.size(); i++) {
+      const cnt = contours.get(i);
+      const peri = cv.arcLength(cnt, true);
+      const approx = new cv.Mat();
+      cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+      if (approx.rows === 4) {
+        const area = Math.abs(cv.contourArea(approx));
+        if (area > maxArea) {
+          maxArea = area;
+          bestPts = [];
+          for (let j = 0; j < 4; j++) {
+            bestPts.push({
+              x: approx.data32S[j * 2] / scale,
+              y: approx.data32S[j * 2 + 1] / scale
+            });
+          }
+        }
+      }
+      approx.delete(); cnt.delete();
+    }
+  } finally {
+    [src, gray, blurred, edges, dilated, kernel, contours, hier].forEach(m => { try { m && m.delete(); } catch(e){} });
+    document.body.removeChild(pCanvas);
+  }
+
+  if (!bestPts) return null;
+
+  const [tl, tr, br, bl] = sortCorners(bestPts);
+  const outW = Math.round(Math.max(
+    Math.hypot(tr.x - tl.x, tr.y - tl.y),
+    Math.hypot(br.x - bl.x, br.y - bl.y)
+  ));
+  const outH = Math.round(Math.max(
+    Math.hypot(bl.y - tl.y, bl.x - tl.x),
+    Math.hypot(br.y - tr.y, br.x - tr.x)
+  ));
+
+  const warpScale = Math.min(1, 1200 / Math.max(img.naturalWidth, img.naturalHeight));
+  const sw = Math.round(img.naturalWidth * warpScale);
+  const sh = Math.round(img.naturalHeight * warpScale);
+
+  const wCanvas = document.createElement('canvas');
+  wCanvas.width = sw; wCanvas.height = sh;
+  wCanvas.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;top:-9999px;left:-9999px';
+  wCanvas.getContext('2d').drawImage(img, 0, 0, sw, sh);
+  document.body.appendChild(wCanvas);
+
+  let wSrc, wDst, M, sp, dp;
+  try {
+    wSrc = cv.imread(wCanvas);
+    sp = cv.matFromArray(4, 1, cv.CV_32FC2, [
+      tl.x * warpScale, tl.y * warpScale,
+      tr.x * warpScale, tr.y * warpScale,
+      br.x * warpScale, br.y * warpScale,
+      bl.x * warpScale, bl.y * warpScale
+    ]);
+    dp = cv.matFromArray(4, 1, cv.CV_32FC2, [
+      0, 0,
+      outW * warpScale, 0,
+      outW * warpScale, outH * warpScale,
+      0, outH * warpScale
+    ]);
+    M = cv.getPerspectiveTransform(sp, dp);
+    wDst = new cv.Mat();
+    const dstSize = new cv.Size(Math.round(outW * warpScale), Math.round(outH * warpScale));
+    cv.warpPerspective(wSrc, wDst, M, dstSize, cv.INTER_LINEAR, cv.BORDER_CONSTANT);
+
+    const resultCanvas = document.createElement('canvas');
+    resultCanvas.width = wDst.cols; resultCanvas.height = wDst.rows;
+    cv.imshow(resultCanvas, wDst);
+    return resultCanvas.toDataURL('image/jpeg', 0.92);
+  } finally {
+    [wSrc, wDst, M, sp, dp].forEach(m => { try { m && m.delete(); } catch(e){} });
+    document.body.removeChild(wCanvas);
   }
 }
 
@@ -1338,5 +1886,23 @@ document.getElementById('acc-modal').addEventListener('click', function(e) {
 document.getElementById('export-modal').addEventListener('click', function(e) {
   if (e.target === this) closeExportModal();
 });</script>
+<!-- 手動トリミングモーダル -->
+<div id="manual-crop-modal" class="modal-overlay" style="display:none;">
+  <div class="manual-crop-box">
+    <h2>✂ 手動トリミング</h2>
+    <p>四隅の青いマーカーをドラッグして領収書の範囲を指定してください</p>
+    <div style="display:flex;justify-content:center;gap:12px;margin-bottom:6px;">
+      <button class="btn-scan" style="padding:7px 16px;font-size:13px;" onclick="rotateCrop(-90)">&#8634; 左90°</button>
+      <button class="btn-scan" style="padding:7px 16px;font-size:13px;" onclick="rotateCrop(90)">&#8635; 右90°</button>
+    </div>
+    <div class="crop-canvas-wrap">
+      <canvas id="crop-canvas"></canvas>
+    </div>
+    <div class="modal-btn-row" style="margin-top:4px;">
+      <button class="btn-cancel" onclick="cancelManualCrop()">キャンセル</button>
+      <button class="btn-login" onclick="confirmManualCrop()">✂ トリミングを確定</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
