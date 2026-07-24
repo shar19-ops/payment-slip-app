@@ -717,11 +717,11 @@ const POS = {
   date_day:     { x: 317, y:  90, w:  38 },  // 日
   office_code:  { x: 575, y:  86, w:  50 },  // 事業所CD（箱: 560.32-627.84）
   voucher_no:   { x: 627.84, y:  86, w: 135.04 },  // 伝票番号（箱: 627.84-762.88）
-  job_number:   { x:  88, w:  82, row: 2 },  // 工番（「工番」ラベル右側、借方科目欄内、row2の縦中央）
-  project_name: { x:  70, w: 100, row: 4 },  // 件名（「件名」ラベル右側、借方科目欄内、row4の縦中央）
-  issue_year:   { x:  80, y: 362, w:  50 },  // 発行年
+  job_number:   { x:  37.08, w: 135.24, row: 2 },  // 工番（借方科目欄の枠全幅、row2+3の縦横中央）
+  project_name: { x:  42.2, w: 125, row: 4 },  // 件名（有効幅125pt。借方科目欄の枠(37.08-172.32)に対して横中央、row4-6の縦中央）
+  issue_year:   { x:  76.6, y: 362, w:  50 },  // 発行年（半角1文字幅の半分=3.4pt左へ）
   issue_month:  { x: 135, y: 362, w:  38 },  // 発行月
-  issue_day:    { x: 183, y: 362, w:  38 },  // 発行日
+  issue_day:    { x: 196.6, y: 362, w:  38 },  // 発行日（半角2文字幅=13.6pt右へ）
   dept:         { x: 583, y: 384, w:  55 },  // 部
   section:      { x: 695, y: 384, w:  55 },  // 課
   issuer:       { x: 608, y: 423, w: 175 },  // 発行者（14pt表示）
@@ -1200,15 +1200,17 @@ async function generatePDF(withCopy, mode = 'download') {
       drawPos('date_year',    v('date_year'));
       drawPos('date_month',   v('date_month'));
       drawPos('date_day',     v('date_day'));
-      // 事業所CD・伝票番号は枠付きセルのため縦中央揃え
-      drawInCell(v('office_code'), POS.office_code.x, 66.72, 97.92, POS.office_code.w);
+      // 事業所CD・伝票番号は枠付きセルのため縦横中央揃え
+      drawInCell(v('office_code'), POS.office_code.x, 66.72, 97.92, POS.office_code.w, null, 'center');
       drawInCell(v('voucher_no'),  POS.voucher_no.x,  66.72, 97.92, POS.voucher_no.w, null, 'center');
 
       // ─ 工番・件名（借方科目欄、各ラベル行の縦中央） ─
       {
-        // 工番欄はrow2+3の結合セル、件名欄はrow4+5+6の結合セル全体を使って縦中央配置
+        // 工番欄はrow2+3の結合セル全体を使って縦横中央配置
         const t2 = ROW_BOUNDS[2][0], b2 = ROW_BOUNDS[3][1];
-        drawInCell(v('job_number'), POS.job_number.x, t2, b2, POS.job_number.w);
+        drawInCell(v('job_number'), POS.job_number.x, t2, b2, POS.job_number.w, null, 'center');
+        // 件名欄はrow4+5+6の結合セル全体を使って縦中央配置。テキストボックス(横方向)自体は
+        // 借方科目欄の枠に対して中央配置済み、折り返した各行はボックス内で左寄せ。
         const t4 = ROW_BOUNDS[4][0], b4 = ROW_BOUNDS[6][1];
         drawInCell(v('project_name'), POS.project_name.x, t4, b4, POS.project_name.w);
       }
