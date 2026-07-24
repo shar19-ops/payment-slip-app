@@ -1289,6 +1289,30 @@ async function generatePDF(withCopy, mode = 'download') {
       drawAt(yOffset);
     }
 
+    // ─ A4中央に切取り線を描画 ─
+    {
+      const cutY = A4_H - A5_H;
+      const cutClr = PDFLib.rgb(0.5, 0.5, 0.5);
+      const cutLabel = '切取り';
+      const cutLabelSize = 7.5;
+      const cutLabelW = jpFont.widthOfTextAtSize(cutLabel, cutLabelSize);
+      const cutLabelX = (A4_W - cutLabelW) / 2;
+      const dashLen = 9, dashGap = 5;
+      let cx = 4;
+      while (cx < cutLabelX - 6) {
+        const ex = Math.min(cx + dashLen, cutLabelX - 6);
+        a4Page.drawLine({ start: { x: cx, y: cutY }, end: { x: ex, y: cutY }, thickness: 0.5, color: cutClr });
+        cx = ex + dashGap;
+      }
+      a4Page.drawText(cutLabel, { x: cutLabelX, y: cutY - cutLabelSize * 0.4, size: cutLabelSize, font: jpFont, color: cutClr });
+      cx = cutLabelX + cutLabelW + 6;
+      while (cx < A4_W - 4) {
+        const ex = Math.min(cx + dashLen, A4_W - 4);
+        a4Page.drawLine({ start: { x: cx, y: cutY }, end: { x: ex, y: cutY }, thickness: 0.5, color: cutClr });
+        cx = ex + dashGap;
+      }
+    }
+
     // ─ 領収書: A5ページに2×2グリッドでまとめて出力 ─
     if (receiptImages.length > 0) {
       const A5W = 420, A5H = 595;
